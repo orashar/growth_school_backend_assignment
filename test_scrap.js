@@ -5,18 +5,19 @@ const ObjectsToCsv = require('objects-to-csv')
 const BASE_URL = 'https://stackoverflow.com'
 const HOME_URL = `${BASE_URL}/questions?tab=newest&page=`
 const visited = new Set()
-const all_questions = {}
+const all_questions = new Object()
 const currently_timeout = false
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 const get_page_count = $ => {
 	links = [...new Set( 
-		$('a.s-pagination--item.js-pagination-item') // Select pagination links 
-			.map((_, a) => $(a).text()) // Extract the href (url) from each link 
-			.toArray() // Convert cheerio object to array 
+		$('a.s-pagination--item.js-pagination-item')
+			.map((_, a) => $(a).text())
+			.toArray()
 	),]
     page_count = links[links.length - 2]
+    console.log(page_count, links)
     return page_count
 }
 
@@ -36,9 +37,13 @@ const get_html = async (url) => {
 
 
 const extract_data = $ => {
+        answers_count = $("#answers-header > div > div.flex--item.fl1 > h2").attr('data-answercount')
+        if(answers_count == undefined) answers_count = 0
+        upvote_count = $('div.js-vote-count').map((_,div) => $(div).attr('data-value')).toArray()[0]
+        if(upvote_count == undefined) upvote_count = 0
         return {
-        upvote_count: $('div.js-vote-count').map((_,div) => $(div).attr('data-value')).toArray()[0],
-        answers_count: $("#answers-header > div > div.flex--item.fl1 > h2").attr('data-answercount')
+            upvote_count,
+            answers_count 
         }
     }
 
@@ -61,7 +66,7 @@ const crawl = async (url) => {
         else all_questions[url] = {...info}
     }
     catch(err){
-        console.log(err, "initiating 10 sec timeout")
+        console.log("initiating 15 sec timeout")
         currently_timeout = true
         visited.delete(url)
         setTimeout(() => {
@@ -78,7 +83,6 @@ const queue = (concurrency = 5) => {
         enqueue: async(task, ...params) => {
             tasks.push({ task, params })
             if(crawler_count >= concurrency) {
-                console.log("wait bruh")
                 return
             }
 
@@ -100,7 +104,6 @@ const queue = (concurrency = 5) => {
 
 const crawlTask = async (url) => {
     if(visited.size >= 500) {
-        console.log("Have done it enough")
         return
     }
     
@@ -110,54 +113,50 @@ const crawlTask = async (url) => {
         await crawl(url)
     }
     catch(err){
-        console.log(err)
+        console.log("error in crawlTask")
     }
 }
 
 
 const links_queue = queue()
-// const first_page = get_html(HOME_URL + 1)
-// const $first = cheerio.load(first_page)
-// const pages = min(get_page_count($first), 10000)
 
-// for(var i = 1; i <= 10; i++) {
-//     console.log("crawling page " + i)
-//     links_queue.enqueue(crawlTask, HOME_URL+1)
-// }
-links_queue.enqueue(crawlTask, 'https://stackoverflow.com/questions/14031763/doing-a-cleanup-action-just-before-node-js-exits')
+const pages = 50
 
-//         const $ = cheerio.load(data)
-//         const page_count = get_page_count($)
-//         console.log(page_count)
-// })
+const addPageQuestiontoQueue = async (url) => {
+    const html = await get_html(url)
+    const $html = cheerio.load(html)
+    get_question_links($html).forEach(link => links_queue.enqueue(crawlTask, link))
+}
+for(var i = 1; i <= 1; i++) {
+    console.log(`crawling page ${i}`)
+    try{
+        addPageQuestiontoQueue(HOME_URL+i)
+    }catch(err){
+        console.log("error in addPageQuestiontoQueue")
+    }
+}
+
+
+const objtocsv = async () => {
+    question_arr = []
+    for(var key in all_questions){
+        question_arr.push(all_questions[key])
+    }
+    console.log("creating csv")
+    const csv = new ObjectsToCsv(question_arr);   
+    await csv.toDisk('./test.csv');
+  }
 
 async function exitHandler(options, exitCode) {
     console.log("exit called")
-    const objtocsv = async () => {
-        console.log("starting to write csv")
-        const csv = new ObjectsToCsv(all_questions.values());
-       
-        // Save to file:
-        await csv.toDisk('./test.csv');
-       
-        // Return the CSV file as string:
-        // console.log(await csv.toString());
-      }
+
     await objtocsv()
-    if (options.cleanup) console.log('clean');
-    if (exitCode || exitCode === 0) console.log(exitCode, 'clean142134234');
+    
     if (options.exit) process.exit();
 }
 
-//do something when app is closing
-process.on('exit', exitHandler.bind(null,{cleanup:true}));
-
-//catches ctrl+c event
+process.on('exit', exitHandler.bind(null,{exit:true}));
 process.on('SIGINT', exitHandler.bind(null, {exit:true}));
-
-// catches "kill pid" (for example: nodemon restart)
 process.on('SIGUSR1', exitHandler.bind(null, {exit:true}));
 process.on('SIGUSR2', exitHandler.bind(null, {exit:true}));
-
-//catches uncaught exceptions
 process.on('uncaughtException', exitHandler.bind(null, {exit:true}));
