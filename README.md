@@ -6,6 +6,9 @@
 - Limit concurrency to 5
 - Saving data to CSV when the script is killed or stopped
 
+## Demo Video
+https://drive.google.com/file/d/1RJBehzUA4UXeURuk5NAQ2QSpl7T7Rf6I/view?usp=sharing
+
 ## Steps to run
 - clone repository -> `git clone {repo_url}`
 - install dependencies -> `npm install` or `npm i`
